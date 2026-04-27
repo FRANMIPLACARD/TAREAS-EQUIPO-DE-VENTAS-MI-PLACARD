@@ -684,12 +684,18 @@ async function loadState(){
   try{
     const cached=localStorage.getItem('sv_state');
     if(cached) G=JSON.parse(cached);
-    const snap=await db.collection('state').doc('main').get();
-    if(snap.exists && snap.data().state) G=snap.data().state;
     for(let i=0;i<6;i++) ensureDefaults(i);
-    localStorage.setItem('sv_state',JSON.stringify(G));
+    // try Firebase with 5 second timeout
+    const firebasePromise = db.collection('state').doc('main').get();
+    const timeout = new Promise((_,reject)=>setTimeout(()=>reject(new Error('timeout')),5000));
+    const snap = await Promise.race([firebasePromise, timeout]);
+    if(snap.exists && snap.data().state){
+      G=snap.data().state;
+      for(let i=0;i<6;i++) ensureDefaults(i);
+      localStorage.setItem('sv_state',JSON.stringify(G));
+    }
   }catch(e){
-    console.error(e);
+    console.warn('Firebase error, using local data:', e);
     try{ G=JSON.parse(localStorage.getItem('sv_state')||'{}'); }catch(e2){}
     for(let i=0;i<6;i++) ensureDefaults(i);
   }
@@ -1256,28 +1262,6 @@ function renderDayView(){
         </div>
       </div>
     </div>`;
-}
-  const now=new Date();
-  const todayDi=(now.getDay()+6)%7;
-  const days=['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
-  const months=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
-  const dateStr=`${days[todayDi]} ${now.getDate()} de ${months[now.getMonth()]}`;
-
-  // build week strip for today view too
-  const ws=document.getElementById('weekStripToday');
-  if(ws) ws.innerHTML=bs().weeks.map((w,i)=>{
-    const status=getWeekStatus(i);
-    const statusLabel={full:'✅ Asignada',partial:'⚠️ Parcial',empty:'○ Sin asignar'}[status];
-    return `<button class="week-tab ${i===curWeek?'active':''}" onclick="selWeek(${i});renderDayView()">
-      <span>Sem ${i+1} · ${w}</span>
-      <span class="week-status ${status}"><span class="week-dot ${status}"></span>${statusLabel}</span>
-    </button>`;
-  }).join('');
-
-  const badge=document.getElementById('topBadgeToday');
-  const desc=document.getElementById('topDescToday');
-  if(badge) badge.textContent='HOY · '+days2[todayDi].toUpperCase();
-  if(desc) desc.textContent=`${now.getDate()} de ${months[now.getMonth()]}`;
 
 function changeCardMember(w,di,tid,v){
   setAssign(w,di,tid,v);
@@ -2076,6 +2060,7 @@ function renderHistorial(){
 loadState().then(()=>{
   document.getElementById('screen-login').classList.add('active');
 });
+}
 </script>
 </body>
 </html>
