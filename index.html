@@ -139,8 +139,14 @@ header{background:#fff;padding:14px 28px;display:flex;align-items:center;justify
 
 /* CARDS */
 .t-card{background:#fff;border-radius:9px;padding:9px 10px;box-shadow:0 2px 10px rgba(0,0,0,0.08),0 1px 3px rgba(0,0,0,0.05);border-left:3px solid var(--gold);user-select:none;transition:box-shadow 0.2s,transform 0.15s;}
-.t-card.late{border-left-color:#c17a5a!important;background:#fde8dc!important;}
+.t-card.late{border-left:4px solid #c17a5a!important;background-color:#fde8dc!important;border-top:1px solid #e8a090!important;border-right:1px solid #e8a090!important;border-bottom:1px solid #e8a090!important;}
 .t-card.late .t-card-name{color:#7a2a0a!important;font-weight:600;}
+.t-card.late .freq-tag{background-color:#f5c5b0!important;color:#7a2a0a!important;}
+.t-card.late .member-sel{background-color:#f9d5c8!important;border-color:#e8a090!important;}
+.t-card.late .time-sel{background-color:#f9d5c8!important;border-color:#e8a090!important;}
+.t-card.late .status-box{border-color:#c17a5a!important;}
+.t-card.late .task-status{border-top:1px solid #e8a090!important;}
+.t-card.late .member-badge{opacity:0.9;}
 .late-badge{font-size:0.65rem;font-weight:700;background:#c17a5a;color:#fff;border-radius:5px;padding:2px 9px;margin-bottom:6px;display:inline-block;}
 .t-card:hover{box-shadow:0 6px 20px rgba(186,161,112,0.18),0 2px 6px rgba(0,0,0,0.08);transform:translateY(-2px);}
 .t-card.dragging{opacity:0.6;transform:rotate(1.5deg) scale(1.03);box-shadow:0 12px 32px rgba(186,161,112,0.25);}
@@ -548,6 +554,10 @@ header{background:#fff;padding:14px 28px;display:flex;align-items:center;justify
         <div class="cfg-row"><span class="cfg-label">Dirección</span><input class="cfg-input" id="cfgAddr" oninput="bs().branch.addr=this.value;syncAll()"></div>
       </div>
       <div class="cfg-section">
+        <h3>📅 Días que trabaja la sucursal</h3>
+        <div id="workDaysConfig"></div>
+      </div>
+      <div class="cfg-section">
         <h3>👥 Equipo</h3>
         <div id="membersConfig"></div>
         <button class="add-btn" onclick="addMember()">+ Agregar integrante</button>
@@ -679,6 +689,7 @@ function ensureDefaults(i){
   if(!G[i].taskTimes)  G[i].taskTimes={};
   if(!G[i].dayOrder)   G[i].dayOrder={};
   if(!G[i].alerts)     G[i].alerts={};
+  if(!G[i].workDays)   G[i].workDays=[0,1,2,3,4,5,6]; // all days by default
   if(!G[i].meetings)   G[i].meetings=[];
 }
 
@@ -733,8 +744,9 @@ db.collection('state').doc('main').onSnapshot(snap=>{
 });
 
 function syncUI(){
-  if(document.getElementById('view-board').classList.contains('active')) renderBoard();
-  if(document.getElementById('screen-home').classList.contains('active')) renderHome();
+  if(document.getElementById('view-board')?.classList.contains('active')) renderBoard();
+  if(document.getElementById('view-today')?.classList.contains('active')) renderDayView();
+  if(document.getElementById('screen-home')?.classList.contains('active')) renderHome();
 }
 
 function showLoading(msg){ const el=document.getElementById('loadingOverlay'); el.querySelector('p').textContent=msg||'Cargando...'; el.style.display='flex'; }
@@ -893,7 +905,8 @@ function openBranch(i){
   document.querySelector('.view-btn[data-v="today"]').classList.add('active');
   buildWeekTabs();
   renderBoard();
-  renderDayView();
+  // small delay to ensure board data is ready before rendering day view
+  setTimeout(()=>renderDayView(), 100);
 }
 
 // ══════════════════════════════
@@ -904,7 +917,7 @@ function switchView(v,btn){
   document.querySelectorAll('.view-btn').forEach(el=>el.classList.remove('active'));
   document.getElementById('view-'+v).classList.add('active');
   btn.classList.add('active');
-  if(v==='today') renderDayView();
+  if(v==='today') setTimeout(()=>renderDayView(),50);
   if(v==='board') renderBoard();
   if(v==='config') openConfig();
   if(v==='temas') renderTemas();
@@ -960,11 +973,11 @@ function renderDayView(){
     sorted.forEach(t=>{
       const r=reschedules[t.id];
       const lookupDay=r?r.newDay:todayDi;
-      const av=r?.newMember||getAssign(w,lookupDay,t.id)||t.dayMembers?.[lookupDay]||t.dayMembers?.[todayDi]||'';
+      const av=r?.newMember||getAssign(w,lookupDay,t.id)||'';
       const isDone=getDone(w,todayDi,t.id);
       const timeVal=getTime(t.id,todayDi);
       const isR=!!r;
-      const matchFilter=trelloFilter==='all'||av===trelloFilter||av==='todas';
+      const matchFilter=trelloFilter==='all'||av===trelloFilter||av==='todas'||av==='';
       const mIdx=members.findIndex(m=>m.name===av);
       const mColor=mIdx>=0?COLORS[mIdx%COLORS.length]:'#aaa';
       let isLateD=false,lateHD=0;
@@ -996,7 +1009,7 @@ function renderDayView(){
       }
       const rescheduleBtn=canEdit?`<button class="done-btn" style="border-color:var(--warn);color:var(--warn);" onclick="openReschedule(${todayDi},'${t.id}')">🔄</button>`:'';
       const cls=['t-card','freq-'+t.freq,isDone?'done-card':'',isR?'rescheduled':'',isLateD?'late':'',!matchFilter?'hidden-card':''].join(' ');
-      const lateBadge=isLateD?`<div class="late-badge">⏰ Retrasada ${lateHD}h</div>`:'';
+      const lateBadge=isLateD?`<div class="late-badge">⏰ Retrasada${lateHD>0?' '+lateHD+'h':''}</div>`:'';
       const rTag=isR?`<div class="rescheduled-tag">Reagendada desde ${DAYS[r.origDay]}</div>`:'';
       cards+=`<div class="${cls}" style="margin-bottom:8px;">
         <div class="t-card-top">${canEdit?'<span class="drag-handle">⠿</span>':''}${timeDisplay}</div>
@@ -1029,19 +1042,44 @@ function getWeekStatus(w){
   let total=0, assigned=0;
   tasks.forEach(t=>{
     const r=reschedules[t.id];
-    const days = r ? [r.newDay] : t.days.filter(d=>d!==6);
+    const days = r ? [r.newDay] : t.days.filter(d=>(bs().workDays||[0,1,2,3,4,5,6]).includes(d));
     days.forEach(di=>{
-      if(di===6) return;
       total++;
       const weekAssign = bs().assign[w]?.[di]?.[t.id]||'';
-      const configAssign = t.dayMembers?.[di]||'';
-      const av = r?.newMember || weekAssign || configAssign || '';
-      if(av) assigned++;
+      const av = r?.newMember || weekAssign || '';
+      const timeVal = getTime(t.id, di);
+      // fully assigned = has member AND has time
+      if(av && timeVal) assigned++;
     });
   });
   if(total===0||assigned===0) return 'empty';
   if(assigned===total) return 'full';
   return 'partial';
+}
+
+function getWeekDates(weekStr){
+  // Parse week string like "27 Abr - 3 May" and return array of 7 dates
+  const MM={ene:0,feb:1,mar:2,abr:3,may:4,jun:5,jul:6,ago:7,sep:8,oct:9,nov:10,dic:11};
+  try{
+    const parts=weekStr.toLowerCase().split(/[-–]/);
+    if(parts.length<2) return null;
+    const startParts=parts[0].trim().split(/\s+/);
+    const endParts=parts[1].trim().split(/\s+/);
+    const startDay=parseInt(startParts[0]);
+    const startMonth=MM[startParts[1]?.substring(0,3)];
+    const endDay=parseInt(endParts[0]);
+    const endMonth=endParts[1]?MM[endParts[1].substring(0,3)]:startMonth;
+    if(isNaN(startDay)||startMonth===undefined) return null;
+    const year=new Date().getFullYear();
+    const startDate=new Date(year,startMonth,startDay);
+    const dates=[];
+    for(let i=0;i<7;i++){
+      const d=new Date(startDate);
+      d.setDate(startDate.getDate()+i);
+      dates.push(d);
+    }
+    return dates;
+  }catch(e){ return null; }
 }
 
 function buildWeekTabs(){
@@ -1088,6 +1126,8 @@ function sortTasks(colTasks,w,di){
 
 function renderBoard(){
   const w=curWeek;
+  const MSHORT2=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  const weekDates=getWeekDates(bs().weeks[w]||'');
   const tasks=bs().tasks;
   const reschedules=bs().reschedule[w]||{};
   const members=bs().members.filter(m=>m&&m.name);
@@ -1107,7 +1147,9 @@ function renderBoard(){
 
   // columns
   const wrap=document.getElementById('boardWrap');
+  const workDays=bs().workDays||[0,1,2,3,4,5,6];
   wrap.innerHTML=DAYS.map((day,di)=>{
+    if(!workDays.includes(di)) return ''; // skip non-work days
     // get tasks for this column
     const colTasks=tasks.filter(t=>{
       const r=reschedules[t.id];
@@ -1115,12 +1157,14 @@ function renderBoard(){
     });
     const sorted=sortTasks(colTasks,w,di);
 
-    const cards=di===6
+    const isRestDay = !workDays.includes(di);
+    const cards=isRestDay
       ? `<div class="rest-card">🌙 Descanso del equipo</div>`
+      : sorted.length===0 ? `<div class="rest-card">Sin tareas</div>`
       : sorted.map(t=>{
           const r=reschedules[t.id];
           const lookupDay=r?r.newDay:di;
-          const av=r?.newMember||getAssign(w,lookupDay,t.id)||t.dayMembers?.[lookupDay]||t.dayMembers?.[di]||t.defaultMember||'';
+          const av=r?.newMember||getAssign(w,lookupDay,t.id)||'';
           const memberObj=members.find(m=>m.name===av);
           const mColor=members.findIndex(m=>m.name===av) >= 0 ? COLORS[members.findIndex(m=>m.name===av)%COLORS.length]:'#aaa';
           const isDone=getDone(w,di,t.id);
@@ -1128,13 +1172,18 @@ function renderBoard(){
           const isR=!!r;
           const _n=new Date(),_td=(_n.getDay()+6)%7;
           let isLate=false,lateH=0;
-          if(!isDone&&di===_td&&timeVal&&timeVal!=='durante'&&timeVal!=='demanda'){
+          if(!isDone&&di<=_td&&timeVal&&timeVal!=='durante'&&timeVal!=='demanda'){
             const _p=timeVal.split(':'),_t=new Date();
-            _t.setHours(+_p[0],+_p[1],0,0);
-            const _d=(_n-_t)/3600000;
-            if(_d>=2){isLate=true;lateH=Math.floor(_d);}
+            // for past days, always late; for today, check 2h
+            if(di<_td){
+              isLate=true; lateH=0;
+            } else {
+              _t.setHours(+_p[0],+_p[1],0,0);
+              const _d=(_n-_t)/3600000;
+              if(_d>=2){isLate=true;lateH=Math.floor(_d);}
+            }
           }
-          const matchFilter=trelloFilter==='all'||av===trelloFilter||av==='todas';
+          const matchFilter=trelloFilter==='all'||av===trelloFilter||av==='todas'||av==='';
 
           // time display
           const timeDisplay=canEdit
@@ -1170,7 +1219,7 @@ function renderBoard(){
               ${canEdit?`<span class="drag-handle" title="Arrastrar para mover">⠿</span>`:''}
               ${timeDisplay}
             </div>
-            ${isLate?`<div class="late-badge">⏰ Retrasada ${lateH}h</div>`:''}
+            ${isLate?`<div class="late-badge">⏰ Retrasada${lateH>0?' '+lateH+'h':''}</div>`:''}
             ${isR?`<div class="rescheduled-tag">🔄 Reagendada desde ${DAYS[r.origDay]}</div>`:''}
             <div class="t-card-name">${t.name}</div>
             <div class="t-card-footer">
@@ -1221,10 +1270,8 @@ function setFilter(f){ trelloFilter=f; renderBoard(); }
 
 function changeCardMember(w,di,tid,v){
   setAssign(w,di,tid,v);
-  const t=bs().tasks.find(t=>t.id===tid);
-  if(t){ if(!t.dayMembers) t.dayMembers={}; t.dayMembers[di]=v; }
   save();
-  buildWeekTabs(); // update status indicators
+  buildWeekTabs();
   renderBoard();
 }
 
@@ -1691,8 +1738,34 @@ function renderHistorial(){
 }
 let calState={}, activeCal=null;
 
+function renderWorkDaysConfig(){
+  const days=['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
+  if(!bs().workDays) bs().workDays=[0,1,2,3,4,5,6];
+  const wd=bs().workDays;
+  document.getElementById('workDaysConfig').innerHTML=`
+    <div style="display:flex;flex-wrap:wrap;gap:8px;">
+      ${days.map((d,i)=>`
+        <label style="display:flex;align-items:center;gap:6px;background:${wd.includes(i)?'#fdf6e3':'#f5f3f0'};border:1.5px solid ${wd.includes(i)?'var(--gold)':'var(--border)'};border-radius:8px;padding:6px 12px;cursor:pointer;font-size:0.78rem;font-weight:${wd.includes(i)?'600':'400'};color:${wd.includes(i)?'var(--gold)':'var(--muted)'};">
+          <input type="checkbox" ${wd.includes(i)?'checked':''} onchange="toggleWorkDay(${i},this.checked)" style="accent-color:var(--gold);cursor:pointer;">
+          ${d}
+        </label>`).join('')}
+    </div>
+    <div style="font-size:0.7rem;color:var(--muted);margin-top:8px;">Los días desactivados no aparecerán en el tablero.</div>`;
+}
+
+function toggleWorkDay(di,checked){
+  if(!bs().workDays) bs().workDays=[0,1,2,3,4,5,6];
+  if(checked && !bs().workDays.includes(di)) bs().workDays.push(di);
+  if(!checked) bs().workDays=bs().workDays.filter(d=>d!==di);
+  bs().workDays.sort();
+  save();
+  renderWorkDaysConfig();
+  renderBoard();
+}
+
 function openConfig(){
   const b=bs();
+  renderWorkDaysConfig();
   document.getElementById('cfgName').value=b.branch.name||'';
   document.getElementById('cfgAddr').value=b.branch.addr||'';
   renderMembersConfig();
@@ -2015,6 +2088,7 @@ function renderHistorial(){
 // ══════════════════════════════
 loadState().then(()=>{
   document.getElementById('screen-login').classList.add('active');
+  hideLoading();
 });
 </script>
 </body>
